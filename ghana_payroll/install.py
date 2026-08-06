@@ -1,0 +1,310 @@
+# Copyright (c) 2026, Ghana Payroll Contributors
+# License: MIT
+
+"""Idempotent setup for the Ghana Payroll app."""
+
+import os
+
+import frappe
+from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
+from frappe.utils import cint
+
+from ghana_payroll.tax_engine import DEFAULT_BRACKETS
+
+PRINT_FORMAT_NAME = "Ghana Salary Slip"
+
+SALARY_COMPONENTS = [
+	{
+		"salary_component": "Basic",
+		"salary_component_abbr": "B",
+		"type": "Earning",
+		"is_tax_applicable": 1,
+		"depends_on_payment_days": 1,
+	},
+	{
+		"salary_component": "SSNIT Employee",
+		"salary_component_abbr": "SSNITEE",
+		"type": "Deduction",
+		"depends_on_payment_days": 0,
+		"description": "Tier 1 + Tier 2 employee contribution, 5.5% of basic. Calculated by Ghana Payroll.",
+	},
+	{
+		"salary_component": "Provident Fund Employee",
+		"salary_component_abbr": "PFEE",
+		"type": "Deduction",
+		"depends_on_payment_days": 0,
+		"description": "Tier 3 employee contribution, 10% of basic. Calculated by Ghana Payroll.",
+	},
+	{
+		"salary_component": "PAYE",
+		"salary_component_abbr": "PAYE",
+		"type": "Deduction",
+		"variable_based_on_taxable_salary": 1,
+		"depends_on_payment_days": 0,
+		"round_to_the_nearest_integer": 0,
+		"description": "Ghana monthly graduated income tax. Calculated by Ghana Payroll.",
+	},
+	{
+		"salary_component": "SSNIT Employer",
+		"salary_component_abbr": "SSNITER",
+		"type": "Deduction",
+		"statistical_component": 1,
+		"do_not_include_in_total": 1,
+		"depends_on_payment_days": 0,
+		"description": "Employer share, 13% of basic. Statistical: does not affect net pay.",
+	},
+	{
+		"salary_component": "Provident Fund Employer",
+		"salary_component_abbr": "PFER",
+		"type": "Deduction",
+		"statistical_component": 1,
+		"do_not_include_in_total": 1,
+		"depends_on_payment_days": 0,
+		"description": "Employer Tier 3 share, 5% of basic. Statistical: does not affect net pay.",
+	},
+]
+
+
+# ----------------------------------------------------------------------
+# entry points
+# ----------------------------------------------------------------------
+def after_install():
+	setup()
+
+
+def after_migrate():
+	setup()
+
+
+def setup():
+	create_custom_fields_for_ghana()
+	create_salary_components()
+	seed_settings()
+	create_print_format()
+	create_workspace()
+	frappe.db.commit()
+
+
+# ----------------------------------------------------------------------
+# custom fields
+# ----------------------------------------------------------------------
+def create_custom_fields_for_ghana():
+	fields = {
+		"Employee": [
+			{
+				"fieldname": "gh_ghana_section",
+				"fieldtype": "Section Break",
+				"label": "Ghana Statutory Details",
+				"insert_after": "company",
+				"collapsible": 1,
+			},
+			{
+				"fieldname": "gh_tin",
+				"fieldtype": "Data",
+				"label": "TIN (Ghana Revenue Authority)",
+				"insert_after": "gh_ghana_section",
+			},
+			{
+				"fieldname": "gh_ssnit_number",
+				"fieldtype": "Data",
+				"label": "SSNIT Number",
+				"insert_after": "gh_tin",
+			},
+			{"fieldname": "gh_ghana_cb", "fieldtype": "Column Break", "insert_after": "gh_ssnit_number"},
+			{
+				"fieldname": "gh_monthly_tax_relief",
+				"fieldtype": "Currency",
+				"label": "Monthly Tax Relief",
+				"insert_after": "gh_ghana_cb",
+				"description": "Approved personal reliefs (marriage/responsibility, child education, aged dependant, disability) expressed per month.",
+			},
+			{
+				"fieldname": "gh_tier2_scheme",
+				"fieldtype": "Data",
+				"label": "Tier 2 Scheme / Trustee",
+				"insert_after": "gh_monthly_tax_relief",
+			},
+		],
+		"Salary Slip": [
+			{
+				"fieldname": "gh_section",
+				"fieldtype": "Section Break",
+				"label": "Ghana Payroll Computation",
+				"insert_after": "total_in_words",
+				"collapsible": 1,
+			},
+			{"fieldname": "gh_pensionable_base", "fieldtype": "Currency", "label": "Pensionable Basic", "insert_after": "gh_section", "read_only": 1},
+			{"fieldname": "gh_insurable_earnings", "fieldtype": "Currency", "label": "Insurable Earnings", "insert_after": "gh_pensionable_base", "read_only": 1},
+			{"fieldname": "gh_taxable_allowances", "fieldtype": "Currency", "label": "Taxable Allowances", "insert_after": "gh_insurable_earnings", "read_only": 1},
+			{"fieldname": "gh_exempt_allowances", "fieldtype": "Currency", "label": "Tax Exempt Allowances", "insert_after": "gh_taxable_allowances", "read_only": 1},
+			{"fieldname": "gh_bonus", "fieldtype": "Currency", "label": "Bonus", "insert_after": "gh_exempt_allowances", "read_only": 1},
+			{"fieldname": "gh_cb1", "fieldtype": "Column Break", "insert_after": "gh_bonus"},
+			{"fieldname": "gh_ssnit_employee", "fieldtype": "Currency", "label": "SSNIT (Employee)", "insert_after": "gh_cb1", "read_only": 1},
+			{"fieldname": "gh_ssnit_employer", "fieldtype": "Currency", "label": "SSNIT (Employer)", "insert_after": "gh_ssnit_employee", "read_only": 1},
+			{"fieldname": "gh_ssnit_tier1", "fieldtype": "Currency", "label": "SSNIT Tier 1", "insert_after": "gh_ssnit_employer", "read_only": 1},
+			{"fieldname": "gh_ssnit_tier2", "fieldtype": "Currency", "label": "SSNIT Tier 2", "insert_after": "gh_ssnit_tier1", "read_only": 1},
+			{"fieldname": "gh_pf_employee", "fieldtype": "Currency", "label": "Provident Fund (Employee)", "insert_after": "gh_ssnit_tier2", "read_only": 1},
+			{"fieldname": "gh_pf_employer", "fieldtype": "Currency", "label": "Provident Fund (Employer)", "insert_after": "gh_pf_employee", "read_only": 1},
+			{"fieldname": "gh_sec2", "fieldtype": "Section Break", "label": "Chargeable Income & PAYE", "insert_after": "gh_pf_employer"},
+			{"fieldname": "gh_pension_relief", "fieldtype": "Currency", "label": "Pension Relief Allowed", "insert_after": "gh_sec2", "read_only": 1},
+			{"fieldname": "gh_tax_relief", "fieldtype": "Currency", "label": "Personal Tax Relief", "insert_after": "gh_pension_relief", "read_only": 1},
+			{"fieldname": "gh_chargeable_income", "fieldtype": "Currency", "label": "Chargeable Income", "insert_after": "gh_tax_relief", "read_only": 1, "bold": 1},
+			{"fieldname": "gh_cb2", "fieldtype": "Column Break", "insert_after": "gh_chargeable_income"},
+			{"fieldname": "gh_paye", "fieldtype": "Currency", "label": "PAYE (Graduated)", "insert_after": "gh_cb2", "read_only": 1},
+			{"fieldname": "gh_bonus_tax", "fieldtype": "Currency", "label": "Bonus Tax", "insert_after": "gh_paye", "read_only": 1},
+			{"fieldname": "gh_total_paye", "fieldtype": "Currency", "label": "Total PAYE", "insert_after": "gh_bonus_tax", "read_only": 1, "bold": 1},
+			{"fieldname": "gh_employer_cost", "fieldtype": "Currency", "label": "Total Employer Cost", "insert_after": "gh_total_paye", "read_only": 1},
+			{"fieldname": "gh_paye_breakdown", "fieldtype": "Long Text", "label": "PAYE Band Breakdown (JSON)", "insert_after": "gh_employer_cost", "read_only": 1, "hidden": 1, "print_hide": 1},
+		],
+	}
+	create_custom_fields(fields, update=True)
+
+
+# ----------------------------------------------------------------------
+# salary components
+# ----------------------------------------------------------------------
+def create_salary_components():
+	for spec in SALARY_COMPONENTS:
+		name = spec["salary_component"]
+		if frappe.db.exists("Salary Component", name):
+			continue
+		doc = frappe.new_doc("Salary Component")
+		for key, value in spec.items():
+			if doc.meta.has_field(key):
+				doc.set(key, value)
+		doc.flags.ignore_permissions = True
+		try:
+			doc.insert(ignore_permissions=True)
+		except Exception:
+			frappe.log_error(
+				title="Ghana Payroll: could not create component {0}".format(name),
+				message=frappe.get_traceback(),
+			)
+
+
+# ----------------------------------------------------------------------
+# settings defaults
+# ----------------------------------------------------------------------
+def seed_settings():
+	settings = frappe.get_doc("Ghana Payroll Settings")
+
+	if not settings.tax_brackets:
+		for band in DEFAULT_BRACKETS:
+			settings.append("tax_brackets", band)
+
+	if not settings.pensionable_components and frappe.db.exists("Salary Component", "Basic"):
+		settings.append("pensionable_components", {"salary_component": "Basic", "note": "Basic salary"})
+
+	defaults = {
+		"currency": "GHS",
+		"ssnit_employee_component": "SSNIT Employee",
+		"ssnit_employer_component": "SSNIT Employer",
+		"pf_employee_component": "Provident Fund Employee",
+		"pf_employer_component": "Provident Fund Employer",
+		"paye_component": "PAYE",
+	}
+	for field, value in defaults.items():
+		if settings.get(field):
+			continue
+		if field != "currency" and not frappe.db.exists("Salary Component", value):
+			continue
+		settings.set(field, value)
+
+	settings.flags.ignore_permissions = True
+	settings.flags.ignore_mandatory = True
+	settings.save(ignore_permissions=True)
+
+
+# ----------------------------------------------------------------------
+# print format
+# ----------------------------------------------------------------------
+def create_print_format():
+	path = os.path.join(
+		frappe.get_app_path("ghana_payroll"), "templates", "print_formats", "ghana_salary_slip.html"
+	)
+	if not os.path.exists(path):
+		return
+
+	with open(path, "r", encoding="utf-8") as f:
+		html = f.read()
+
+	if frappe.db.exists("Print Format", PRINT_FORMAT_NAME):
+		doc = frappe.get_doc("Print Format", PRINT_FORMAT_NAME)
+	else:
+		doc = frappe.new_doc("Print Format")
+		doc.name = PRINT_FORMAT_NAME
+
+	doc.doc_type = "Salary Slip"
+	doc.module = "Ghana Payroll"
+	doc.standard = "No"
+	doc.custom_format = 1
+	doc.print_format_type = "Jinja"
+	doc.disabled = 0
+	doc.html = html
+	doc.flags.ignore_permissions = True
+	doc.save(ignore_permissions=True)
+
+
+# ----------------------------------------------------------------------
+# workspace
+# ----------------------------------------------------------------------
+def create_workspace():
+	"""Best effort: workspace schemas shift between versions, never block install."""
+	try:
+		if frappe.db.exists("Workspace", "Ghana Payroll"):
+			return
+
+		content = [
+			{"id": "gh1", "type": "header", "data": {"text": "<span class='h4'>Ghana Payroll</span>", "col": 12}},
+			{"id": "gh2", "type": "card", "data": {"card_name": "Configuration", "col": 4}},
+			{"id": "gh3", "type": "card", "data": {"card_name": "Payroll Reports", "col": 4}},
+		]
+
+		ws = frappe.new_doc("Workspace")
+		ws.name = "Ghana Payroll"
+		ws.label = "Ghana Payroll"
+		ws.title = "Ghana Payroll"
+		ws.module = "Ghana Payroll"
+		ws.public = 1
+		ws.icon = "money-coins-1"
+		ws.content = frappe.as_json(content)
+
+		links = [
+			("Card Break", "Configuration", None, None, 0),
+			("Link", "Ghana Payroll Settings", "DocType", "Ghana Payroll Settings", 0),
+			("Link", "Ghana PAYE Calculator", "Page", "ghana-paye-calculator", 0),
+			("Link", "Salary Component", "DocType", "Salary Component", 0),
+			("Link", "Salary Structure", "DocType", "Salary Structure", 0),
+			("Card Break", "Payroll Reports", None, None, 0),
+			("Link", "Ghana PAYE Monthly Return", "Report", "Ghana PAYE Monthly Return", 1),
+			("Link", "Ghana SSNIT Contribution Schedule", "Report", "Ghana SSNIT Contribution Schedule", 1),
+			("Link", "Ghana Provident Fund Schedule", "Report", "Ghana Provident Fund Schedule", 1),
+			("Link", "Ghana Payroll Summary", "Report", "Ghana Payroll Summary", 1),
+		]
+
+		for link_type, label, kind, target, is_query in links:
+			row = ws.append("links", {})
+			row.type = link_type
+			row.label = label
+			row.hidden = 0
+			row.onboard = 0
+			if link_type == "Link":
+				row.link_type = kind
+				row.link_to = target
+				if is_query:
+					row.is_query_report = 1
+					row.link_type = "Report"
+
+		ws.flags.ignore_permissions = True
+		ws.insert(ignore_permissions=True)
+	except Exception:
+		frappe.log_error(
+			title="Ghana Payroll: workspace creation skipped", message=frappe.get_traceback()
+		)
+
+
+def before_uninstall():
+	"""Leave payroll data intact; only drop the print format and workspace."""
+	for doctype, name in (("Print Format", PRINT_FORMAT_NAME), ("Workspace", "Ghana Payroll")):
+		if frappe.db.exists(doctype, name):
+			frappe.delete_doc(doctype, name, ignore_permissions=True, force=True)

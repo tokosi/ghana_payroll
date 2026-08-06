@@ -1,0 +1,14 @@
+/* Ghana Payroll */
+.gh-calc-card {
+	background: var(--card-bg, #fff);
+	border: 1px solid var(--border-color, #e2e8f0);
+	border-radius: var(--border-radius-md, 8px);
+	padding: 16px;
+	margin-bottom: 16px;
+}
+.gh-result-figure { font-size: 22px; font-weight: 600; }
+.gh-muted { color: var(--text-muted, #6c7680); font-size: 12px; }
+.gh-band-table { width: 100%; font-size: 13px; }
+.gh-band-table th { text-align: right; font-weight: 500; color: var(--text-muted, #6c7680); }
+.gh-band-table td { text-align: right; padding: 4px 6px; border-top: 1px solid var(--border-color, #e2e8f0); }
+.gh-band-table td:first-child, .gh-band-table th:first-child { text-align: left; }

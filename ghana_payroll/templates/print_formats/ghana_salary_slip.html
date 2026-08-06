@@ -1,0 +1,235 @@
+{%- set employee = frappe.get_doc("Employee", doc.employee) -%}
+{%- set company = frappe.get_doc("Company", doc.company) -%}
+{%- set cur = doc.currency or "GHS" -%}
+
+<style>
+	.gh-slip { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 11px; color: #1f272e; }
+	.gh-slip h2 { font-size: 17px; margin: 0 0 2px 0; letter-spacing: .3px; }
+	.gh-slip h3 { font-size: 12px; margin: 0; font-weight: 600; text-transform: uppercase; letter-spacing: .6px; }
+	.gh-head { border-bottom: 2px solid #1f272e; padding-bottom: 8px; margin-bottom: 10px; }
+	.gh-period { background: #1f272e; color: #fff; padding: 4px 10px; display: inline-block; font-weight: 600; letter-spacing: .5px; }
+	.gh-meta { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+	.gh-meta td { padding: 3px 6px; vertical-align: top; border-bottom: 1px solid #eef1f4; }
+	.gh-meta .lbl { color: #6c7680; width: 15%; }
+	.gh-meta .val { font-weight: 600; width: 18%; }
+	table.gh-tbl { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+	table.gh-tbl th { background: #f4f6f8; text-align: left; padding: 6px; border: 1px solid #dfe3e8; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
+	table.gh-tbl td { padding: 5px 6px; border: 1px solid #dfe3e8; }
+	table.gh-tbl td.amt, table.gh-tbl th.amt { text-align: right; }
+	table.gh-tbl tr.tot td { font-weight: 700; background: #f4f6f8; }
+	.gh-net { border: 2px solid #1f272e; padding: 10px; margin-bottom: 12px; }
+	.gh-net .amt { font-size: 20px; font-weight: 700; }
+	.gh-two { width: 100%; }
+	.gh-two td { vertical-align: top; width: 50%; }
+	.gh-two td:first-child { padding-right: 8px; }
+	.gh-note { color: #6c7680; font-size: 9px; border-top: 1px solid #dfe3e8; padding-top: 6px; margin-top: 10px; }
+	.gh-sign { margin-top: 26px; }
+	.gh-sign td { border-top: 1px solid #1f272e; padding-top: 4px; font-size: 10px; color: #6c7680; width: 30%; }
+	.gh-sign td.gap { border: none; width: 5%; }
+</style>
+
+<div class="gh-slip">
+
+	<div class="gh-head">
+		<table style="width:100%">
+			<tr>
+				<td style="width:70%">
+					<h2>{{ company.name }}</h2>
+					<div style="color:#6c7680">
+						{%- if company.tax_id %}TIN: {{ company.tax_id }} &nbsp;|&nbsp; {% endif -%}
+						{{ company.country or "Ghana" }}
+					</div>
+					<h3 style="margin-top:6px">Salary Slip</h3>
+				</td>
+				<td style="width:30%; text-align:right">
+					<div class="gh-period">
+						{{ frappe.utils.formatdate(doc.start_date, "MMMM yyyy") | upper }}
+					</div>
+					<div style="margin-top:6px; color:#6c7680">
+						{{ frappe.utils.formatdate(doc.start_date) }} &ndash; {{ frappe.utils.formatdate(doc.end_date) }}
+					</div>
+					<div style="color:#6c7680">Ref: {{ doc.name }}</div>
+				</td>
+			</tr>
+		</table>
+	</div>
+
+	<table class="gh-meta">
+		<tr>
+			<td class="lbl">Employee</td>
+			<td class="val">{{ doc.employee_name }}</td>
+			<td class="lbl">Staff ID</td>
+			<td class="val">{{ employee.employee_number or doc.employee }}</td>
+			<td class="lbl">TIN</td>
+			<td class="val">{{ employee.get("gh_tin") or "&mdash;" }}</td>
+		</tr>
+		<tr>
+			<td class="lbl">Designation</td>
+			<td class="val">{{ doc.designation or "&mdash;" }}</td>
+			<td class="lbl">Department</td>
+			<td class="val">{{ doc.department or "&mdash;" }}</td>
+			<td class="lbl">SSNIT No.</td>
+			<td class="val">{{ employee.get("gh_ssnit_number") or "&mdash;" }}</td>
+		</tr>
+		<tr>
+			<td class="lbl">Payment Days</td>
+			<td class="val">{{ doc.payment_days }} / {{ doc.total_working_days }}</td>
+			<td class="lbl">Date of Joining</td>
+			<td class="val">{{ frappe.utils.formatdate(employee.date_of_joining) }}</td>
+			<td class="lbl">Bank A/C</td>
+			<td class="val">{{ employee.bank_ac_no or "&mdash;" }}</td>
+		</tr>
+	</table>
+
+	<table class="gh-two">
+		<tr>
+			<td>
+				<table class="gh-tbl">
+					<thead>
+						<tr><th>Earnings</th><th class="amt" style="width:35%">Amount ({{ cur }})</th></tr>
+					</thead>
+					<tbody>
+						{%- for row in doc.earnings %}
+						{%- if not row.statistical_component %}
+						<tr>
+							<td>{{ row.salary_component }}</td>
+							<td class="amt">{{ frappe.utils.fmt_money(row.amount, currency=cur) }}</td>
+						</tr>
+						{%- endif %}
+						{%- endfor %}
+						<tr class="tot">
+							<td>Gross Pay</td>
+							<td class="amt">{{ frappe.utils.fmt_money(doc.gross_pay, currency=cur) }}</td>
+						</tr>
+					</tbody>
+				</table>
+			</td>
+			<td>
+				<table class="gh-tbl">
+					<thead>
+						<tr><th>Deductions</th><th class="amt" style="width:35%">Amount ({{ cur }})</th></tr>
+					</thead>
+					<tbody>
+						{%- for row in doc.deductions %}
+						{%- if not row.statistical_component and not row.do_not_include_in_total %}
+						<tr>
+							<td>{{ row.salary_component }}</td>
+							<td class="amt">{{ frappe.utils.fmt_money(row.amount, currency=cur) }}</td>
+						</tr>
+						{%- endif %}
+						{%- endfor %}
+						{%- if doc.total_loan_repayment %}
+						<tr>
+							<td>Loan Repayment</td>
+							<td class="amt">{{ frappe.utils.fmt_money(doc.total_loan_repayment, currency=cur) }}</td>
+						</tr>
+						{%- endif %}
+						<tr class="tot">
+							<td>Total Deductions</td>
+							<td class="amt">{{ frappe.utils.fmt_money(doc.total_deduction, currency=cur) }}</td>
+						</tr>
+					</tbody>
+				</table>
+			</td>
+		</tr>
+	</table>
+
+	<div class="gh-net">
+		<table style="width:100%">
+			<tr>
+				<td><h3>Net Pay</h3>
+					<div style="color:#6c7680; font-style:italic">{{ doc.total_in_words }}</div>
+				</td>
+				<td style="text-align:right" class="amt">
+					{{ frappe.utils.fmt_money(doc.net_pay, currency=cur) }}
+				</td>
+			</tr>
+		</table>
+	</div>
+
+	<table class="gh-two">
+		<tr>
+			<td>
+				<table class="gh-tbl">
+					<thead>
+						<tr><th colspan="2">PAYE Computation (Monthly Graduated Rates)</th></tr>
+					</thead>
+					<tbody>
+						<tr><td>Gross Pay</td><td class="amt">{{ frappe.utils.fmt_money(doc.gross_pay, currency=cur) }}</td></tr>
+						<tr><td>Less: Employee SSNIT</td><td class="amt">({{ frappe.utils.fmt_money(doc.get("gh_ssnit_employee") or 0, currency=cur) }})</td></tr>
+						<tr><td>Less: Employee Provident Fund</td><td class="amt">({{ frappe.utils.fmt_money(doc.get("gh_pf_employee") or 0, currency=cur) }})</td></tr>
+						{%- if doc.get("gh_exempt_allowances") %}
+						<tr><td>Less: Tax Exempt Allowances</td><td class="amt">({{ frappe.utils.fmt_money(doc.gh_exempt_allowances, currency=cur) }})</td></tr>
+						{%- endif %}
+						{%- if doc.get("gh_tax_relief") %}
+						<tr><td>Less: Personal Reliefs</td><td class="amt">({{ frappe.utils.fmt_money(doc.gh_tax_relief, currency=cur) }})</td></tr>
+						{%- endif %}
+						<tr class="tot"><td>Chargeable Income</td><td class="amt">{{ frappe.utils.fmt_money(doc.get("gh_chargeable_income") or 0, currency=cur) }}</td></tr>
+						<tr class="tot"><td>PAYE Deducted</td><td class="amt">{{ frappe.utils.fmt_money(doc.get("gh_total_paye") or 0, currency=cur) }}</td></tr>
+					</tbody>
+				</table>
+			</td>
+			<td>
+				<table class="gh-tbl">
+					<thead>
+						<tr><th colspan="2">Statutory Contributions</th></tr>
+					</thead>
+					<tbody>
+						<tr><td>Pensionable Basic</td><td class="amt">{{ frappe.utils.fmt_money(doc.get("gh_pensionable_base") or 0, currency=cur) }}</td></tr>
+						<tr><td>SSNIT &ndash; Employee</td><td class="amt">{{ frappe.utils.fmt_money(doc.get("gh_ssnit_employee") or 0, currency=cur) }}</td></tr>
+						<tr><td>SSNIT &ndash; Employer</td><td class="amt">{{ frappe.utils.fmt_money(doc.get("gh_ssnit_employer") or 0, currency=cur) }}</td></tr>
+						<tr><td>&nbsp;&nbsp;&nbsp;Tier 1 / Tier 2</td><td class="amt">{{ frappe.utils.fmt_money(doc.get("gh_ssnit_tier1") or 0, currency=cur) }} / {{ frappe.utils.fmt_money(doc.get("gh_ssnit_tier2") or 0, currency=cur) }}</td></tr>
+						<tr><td>Provident Fund &ndash; Employee</td><td class="amt">{{ frappe.utils.fmt_money(doc.get("gh_pf_employee") or 0, currency=cur) }}</td></tr>
+						<tr><td>Provident Fund &ndash; Employer</td><td class="amt">{{ frappe.utils.fmt_money(doc.get("gh_pf_employer") or 0, currency=cur) }}</td></tr>
+						<tr class="tot"><td>Total Cost to Company</td><td class="amt">{{ frappe.utils.fmt_money(doc.get("gh_employer_cost") or 0, currency=cur) }}</td></tr>
+					</tbody>
+				</table>
+			</td>
+		</tr>
+	</table>
+
+	{%- set breakdown = frappe.parse_json(doc.get("gh_paye_breakdown") or "[]") -%}
+	{%- if breakdown %}
+	<table class="gh-tbl">
+		<thead>
+			<tr>
+				<th>PAYE Band</th>
+				<th class="amt">Chargeable ({{ cur }})</th>
+				<th class="amt">Rate</th>
+				<th class="amt">Tax ({{ cur }})</th>
+			</tr>
+		</thead>
+		<tbody>
+			{%- for b in breakdown %}
+			<tr>
+				<td>{{ b.band }} {{ frappe.utils.fmt_money(b.chargeable, currency=cur) }}</td>
+				<td class="amt">{{ frappe.utils.fmt_money(b.chargeable, currency=cur) }}</td>
+				<td class="amt">{{ b.rate }}%</td>
+				<td class="amt">{{ frappe.utils.fmt_money(b.tax, currency=cur) }}</td>
+			</tr>
+			{%- endfor %}
+			<tr class="tot">
+				<td colspan="3">Total PAYE</td>
+				<td class="amt">{{ frappe.utils.fmt_money(doc.get("gh_total_paye") or 0, currency=cur) }}</td>
+			</tr>
+		</tbody>
+	</table>
+	{%- endif %}
+
+	<table class="gh-sign">
+		<tr>
+			<td>Prepared By</td>
+			<td class="gap"></td>
+			<td>Approved By</td>
+			<td class="gap"></td>
+			<td>Employee Signature</td>
+		</tr>
+	</table>
+
+	<div class="gh-note">
+		PAYE is computed on the monthly graduated rates issued by the Ghana Revenue Authority.
+		SSNIT contributions are remitted as Tier 1 and Tier 2 under the National Pensions Act.
+		This is a computer generated payslip. Retain it for your records.
+	</div>
+
+</div>
