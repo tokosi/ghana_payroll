@@ -44,12 +44,15 @@ class GhanaPayrollSettings(Document):
 			)
 
 		if self.paye_component:
-			variable = frappe.db.get_value(
-				"Salary Component", self.paye_component, "variable_based_on_taxable_salary"
+			from ghana_payroll.install import get_tax_flag_fields
+
+			flags = get_tax_flag_fields()
+			flagged = any(
+				cint(frappe.db.get_value("Salary Component", self.paye_component, f)) for f in flags
 			)
-			if not cint(variable):
+			if flags and not flagged:
 				frappe.msgprint(
-					_("Salary Component {0} does not have 'Variable Based On Taxable Salary' ticked. PAYE will not be calculated automatically.").format(
+					_("Salary Component {0} is not marked as an income tax component, so PAYE will not be calculated. Tick 'Is Income Tax Component' on it.").format(
 						frappe.bold(self.paye_component)
 					),
 					indicator="red",

@@ -139,6 +139,18 @@ class GhanaSalarySlip(SalarySlip):
 			return super().calculate_variable_based_on_taxable_salary(*args, **kwargs)
 		return flt(self.gh_compute(force=True)["total_paye"], 2)
 
+	def calculate_variable_tax(self, *args, **kwargs):
+		"""
+		Fallback hook.
+
+		Older HRMS routes through `calculate_variable_based_on_taxable_salary`,
+		which then calls this. If a version calls this one directly, we still
+		want the Ghana figure rather than the annualised projection.
+		"""
+		if not self.gh_enabled():
+			return super().calculate_variable_tax(*args, **kwargs)
+		return flt(self.gh_compute(force=True)["total_paye"], 2)
+
 	def calculate_component_amounts(self, component_type, *args, **kwargs):
 		super().calculate_component_amounts(component_type, *args, **kwargs)
 		if component_type == "deductions" and self.gh_enabled():

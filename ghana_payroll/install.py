@@ -39,7 +39,10 @@ SALARY_COMPONENTS = [
 		"salary_component": "PAYE",
 		"salary_component_abbr": "PAYE",
 		"type": "Deduction",
+		# HRMS renamed this flag. Set both; create_salary_components() skips
+		# whichever one does not exist on the installed version.
 		"variable_based_on_taxable_salary": 1,
+		"is_income_tax_component": 1,
 		"depends_on_payment_days": 0,
 		"round_to_the_nearest_integer": 0,
 		"description": "Ghana monthly graduated income tax. Calculated by Ghana Payroll.",
@@ -80,6 +83,7 @@ def setup():
 	create_custom_fields_for_ghana()
 	create_salary_components()
 	seed_settings()
+	ensure_tax_component_flag()
 	create_income_tax_slabs()
 	backfill_income_tax_slabs()
 	create_print_format()
@@ -182,6 +186,55 @@ def create_salary_components():
 				title="Ghana Payroll: could not create component {0}".format(name),
 				message=frappe.get_traceback(),
 			)
+
+
+# ----------------------------------------------------------------------
+# tax component flag
+# ----------------------------------------------------------------------
+TAX_FLAGS = ("is_income_tax_component", "variable_based_on_taxable_salary")
+
+
+def get_tax_flag_fields():
+	"""Whichever of the two flags this HRMS version actually has."""
+	meta = frappe.get_meta("Salary Component")
+	return [f for f in TAX_FLAGS if meta.has_field(f)]
+
+
+@frappe.whitelist()
+def ensure_tax_component_flag():
+	"""
+	Tick the income-tax flag on the mapped PAYE component.
+
+	`add_tax_components()` only calls the tax hook for components carrying this
+	flag, so without it the Ghana engine is never invoked and no PAYE row is
+	produced. The fieldname differs across HRMS versions, hence the lookup.
+	"""
+	from ghana_payroll.tax_engine import get_settings
+
+	try:
+		component = get_settings().paye_component
+	except Exception:
+		component = None
+
+	if not component or not frappe.db.exists("Salary Component", component):
+		return None
+
+	fields = get_tax_flag_fields()
+	if not fields:
+		return None
+
+	changed = []
+	doc = frappe.get_doc("Salary Component", component)
+	for field in fields:
+		if not cint(doc.get(field)):
+			doc.set(field, 1)
+			changed.append(field)
+
+	if changed:
+		doc.flags.ignore_permissions = True
+		doc.save(ignore_permissions=True)
+
+	return {"component": component, "flags_set": changed, "available_flags": fields}
 
 
 # ----------------------------------------------------------------------
