@@ -48,6 +48,36 @@ frappe.ui.form.on("Ghana Payroll Settings", {
 			);
 		}, __("Setup"));
 
+		frm.add_custom_button(__("Map Component Accounts"), () => {
+			frappe.prompt(
+				[
+					{ fieldname: "company", label: __("Company"), fieldtype: "Link", options: "Company", reqd: 1 },
+					{ fieldname: "ssnit_account", label: __("SSNIT Payable Account"), fieldtype: "Link", options: "Account" },
+					{ fieldname: "pf_account", label: __("Provident Fund Payable Account"), fieldtype: "Link", options: "Account" },
+					{ fieldname: "paye_account", label: __("PAYE Payable Account"), fieldtype: "Link", options: "Account" },
+					{ fieldname: "hint", fieldtype: "HTML", options: "<p class='text-muted small'>Leave an account blank to create it under Duties and Taxes.</p>" },
+				],
+				(values) => {
+					frappe.call({
+						method: "ghana_payroll.install.setup_component_accounts",
+						args: values,
+						freeze: true,
+						callback: (r) => {
+							frappe.msgprint({
+								title: __("Component Accounts"),
+								indicator: (r.message || []).length ? "green" : "orange",
+								message: (r.message || []).length
+									? "<ul><li>" + r.message.join("</li><li>") + "</li></ul>"
+									: __("Nothing was updated. Check the component mapping above."),
+							});
+						},
+					});
+				},
+				__("Map Ghana Component Accounts"),
+				__("Apply")
+			);
+		}, __("Setup"));
+
 		frm.dashboard.clear_headline();
 		if (!frm.doc.enabled) {
 			frm.dashboard.set_headline(

@@ -319,6 +319,115 @@ def backfill_income_tax_slabs():
 
 
 # ----------------------------------------------------------------------
+# GL account mapping for salary components
+# ----------------------------------------------------------------------
+def _liability_parent(company):
+	"""Best parent group for statutory payables."""
+	for account_name in ("Duties and Taxes", "Current Liabilities", "Accounts Payable"):
+		parent = frappe.db.get_value(
+			"Account", {"company": company, "account_name": account_name, "is_group": 1}, "name"
+		)
+		if parent:
+			return parent
+	return frappe.db.get_value(
+		"Account", {"company": company, "root_type": "Liability", "is_group": 1, "parent_account": ("is", "not set")}, "name"
+	)
+
+
+def _get_or_create_account(company, account_name, is_tax=False):
+	existing = frappe.db.get_value("Account", {"company": company, "account_name": account_name}, "name")
+	if existing:
+		return existing
+
+	parent = _liability_parent(company)
+	if not parent:
+		return None
+
+	try:
+		acc = frappe.new_doc("Account")
+		acc.account_name = account_name
+		acc.parent_account = parent
+		acc.company = company
+		acc.root_type = "Liability"
+		acc.report_type = "Balance Sheet"
+		acc.is_group = 0
+		if is_tax:
+			acc.account_type = "Tax"
+		acc.flags.ignore_permissions = True
+		acc.insert(ignore_permissions=True)
+		return acc.name
+	except Exception:
+		frappe.log_error(
+			title="Ghana Payroll: could not create account {0}".format(account_name),
+			message=frappe.get_traceback(),
+		)
+		return None
+
+
+def _set_component_account(component, company, account):
+	"""Write the company/account row on a Salary Component."""
+	if not component or not account:
+		return False
+	if not frappe.db.exists("Salary Component", component):
+		return False
+
+	doc = frappe.get_doc("Salary Component", component)
+
+	child_doctype = doc.meta.get_field("accounts").options
+	child_meta = frappe.get_meta(child_doctype)
+	field = "account" if child_meta.has_field("account") else "default_account"
+
+	row = None
+	for r in doc.accounts or []:
+		if r.company == company:
+			row = r
+			break
+	if not row:
+		row = doc.append("accounts", {"company": company})
+
+	row.set(field, account)
+	doc.flags.ignore_permissions = True
+	doc.save(ignore_permissions=True)
+	return True
+
+
+@frappe.whitelist()
+def setup_component_accounts(company, ssnit_account=None, pf_account=None, paye_account=None):
+	"""
+	Point the mapped Ghana components at GL accounts.
+
+	Reads the component names from Ghana Payroll Settings, so it works whatever
+	you called them. Any account left blank is created under Duties and Taxes.
+	"""
+	from ghana_payroll.tax_engine import get_settings
+
+	if not company:
+		frappe.throw(frappe._("Company is required."))
+
+	settings = get_settings()
+
+	ssnit_account = ssnit_account or _get_or_create_account(company, "SSNIT Payable")
+	pf_account = pf_account or _get_or_create_account(company, "Provident Fund Payable")
+	paye_account = paye_account or _get_or_create_account(company, "PAYE Payable", is_tax=True)
+
+	pairs = (
+		(settings.ssnit_employee_component, ssnit_account),
+		(settings.ssnit_employer_component, ssnit_account),
+		(settings.pf_employee_component, pf_account),
+		(settings.pf_employer_component, pf_account),
+		(settings.paye_component, paye_account),
+	)
+
+	updated = []
+	for component, account in pairs:
+		if _set_component_account(component, company, account):
+			updated.append("{0} -> {1}".format(component, account))
+
+	frappe.db.commit()
+	return updated
+
+
+# ----------------------------------------------------------------------
 # print format
 # ----------------------------------------------------------------------
 def create_print_format():
