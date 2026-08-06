@@ -221,6 +221,20 @@ class GhanaSalarySlip(SalarySlip):
 
 		self.gh_store_summary(res)
 
+	def gh_breakdown_rows(self):
+		"""
+		Band breakdown for the print format.
+
+		The Jinja print sandbox does not expose a JSON parser, so the decoding
+		happens here. Never raises: a broken payload yields an empty table
+		rather than a failed payslip.
+		"""
+		try:
+			rows = json.loads(self.get("gh_paye_breakdown") or "[]")
+			return rows if isinstance(rows, list) else []
+		except Exception:
+			return []
+
 	def gh_store_summary(self, res=None):
 		res = res or self.gh_compute()
 		self.gh_pensionable_base = res["basic"]

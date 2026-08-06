@@ -188,7 +188,7 @@
 		</tr>
 	</table>
 
-	{%- set breakdown = frappe.parse_json(doc.get("gh_paye_breakdown") or "[]") -%}
+	{%- set breakdown = doc.gh_breakdown_rows() if doc.get("gh_paye_breakdown") else [] -%}
 	{%- if breakdown %}
 	<table class="gh-tbl">
 		<thead>
