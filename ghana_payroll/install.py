@@ -81,6 +81,7 @@ def setup():
 	create_salary_components()
 	seed_settings()
 	create_income_tax_slabs()
+	backfill_income_tax_slabs()
 	create_print_format()
 	create_workspace()
 	frappe.db.commit()
@@ -272,6 +273,49 @@ def create_income_tax_slabs():
 	companies = frappe.get_all("Company", filters={"country": "Ghana"}, pluck="name")
 	for company in companies:
 		create_income_tax_slab(company)
+
+
+@frappe.whitelist()
+def backfill_income_tax_slabs():
+	"""
+	Attach the placeholder slab to any assignment that is missing one.
+
+	Only touches rows where the field is blank, and only while the Ghana engine
+	is enabled. Existing links are never overwritten.
+	"""
+	from ghana_payroll.tax_engine import get_settings
+
+	try:
+		if not cint(get_settings().enabled):
+			return 0
+	except Exception:
+		return 0
+
+	updated = 0
+	for company in frappe.get_all("Company", pluck="name"):
+		names = frappe.get_all(
+			"Salary Structure Assignment",
+			filters={
+				"company": company,
+				"docstatus": ("<", 2),
+				"income_tax_slab": ("in", ("", None)),
+			},
+			pluck="name",
+		)
+		if not names:
+			continue
+
+		slab = create_income_tax_slab(company)
+		if not slab:
+			continue
+
+		for name in names:
+			frappe.db.set_value(
+				"Salary Structure Assignment", name, "income_tax_slab", slab, update_modified=False
+			)
+			updated += 1
+
+	return updated
 
 
 # ----------------------------------------------------------------------

@@ -38,6 +38,35 @@ def _ghana_enabled():
 
 
 class GhanaSalaryStructureAssignment(SalaryStructureAssignment):
+	def before_validate(self, *args, **kwargs):
+		"""
+		Populate the placeholder slab before anything else looks at it.
+
+		HRMS checks for an Income Tax Slab in two places: here on the
+		assignment, and again inside Salary Slip validation. Only the second
+		one fires during a Payroll Entry run, and it is not reachable by a
+		class override, so the field has to actually be filled rather than the
+		check suppressed.
+		"""
+		if not _ghana_enabled() or self.income_tax_slab or not self.company:
+			parent = getattr(super(), "before_validate", None)
+			return parent(*args, **kwargs) if parent else None
+
+		try:
+			from ghana_payroll.install import create_income_tax_slab
+
+			slab = create_income_tax_slab(self.company)
+			if slab:
+				self.income_tax_slab = slab
+		except Exception:
+			frappe.log_error(
+				title="Ghana Payroll: could not attach placeholder Income Tax Slab",
+				message=frappe.get_traceback(),
+			)
+
+		parent = getattr(super(), "before_validate", None)
+		return parent(*args, **kwargs) if parent else None
+
 	def validate_income_tax_slab(self, *args, **kwargs):
 		# Nothing linked and the Ghana engine is live: the slab is irrelevant.
 		if _ghana_enabled() and not self.income_tax_slab:
