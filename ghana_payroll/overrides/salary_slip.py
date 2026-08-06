@@ -207,6 +207,13 @@ class GhanaSalarySlip(SalarySlip):
 		settings = get_settings()
 		res = self.gh_compute(force=True)
 
+		# PAYE is written directly rather than left to HRMS `add_tax_components()`.
+		# That path only fires when the component carries the income-tax flag, sits
+		# on the structure with a blank amount and formula, and a Payroll Period
+		# covers the dates. Any one of those missing and it skips silently, leaving
+		# the slip with no tax row at all. Writing it here removes the dependency.
+		self.gh_set_component_amount(settings.paye_component, res["total_paye"])
+
 		self.gh_set_component_amount(settings.ssnit_employee_component, res["ssnit_employee"])
 		self.gh_set_component_amount(settings.pf_employee_component, res["pf_employee"])
 		self.gh_set_component_amount(settings.ssnit_employer_component, res["ssnit_employer"])

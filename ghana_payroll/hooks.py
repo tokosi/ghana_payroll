@@ -7,7 +7,7 @@ app_publisher = "Ghana Payroll Contributors"
 app_description = "Ghana localisation for ERPNext payroll: monthly graduated PAYE, SSNIT and Provident Fund"
 app_email = "support@example.com"
 app_license = "mit"
-app_version = "1.0.4"
+app_version = "1.0.5"
 
 required_apps = ["frappe/erpnext", "frappe/hrms"]
 
