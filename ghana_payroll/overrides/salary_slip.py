@@ -22,7 +22,7 @@ Design notes
 import json
 
 import frappe
-from frappe.utils import cint, flt
+from frappe.utils import cint, escape_html, flt, fmt_money
 
 from ghana_payroll.tax_engine import compute_payroll, get_settings
 
@@ -221,6 +221,47 @@ class GhanaSalarySlip(SalarySlip):
 
 		self.gh_store_summary(res)
 
+	def gh_render_breakdown(self, res):
+		"""
+		Pre-render the band table for the payslip.
+
+		The print sandbox has no JSON parser, and calling a method from the
+		template couples the payslip to whatever code the worker happens to
+		have loaded. Storing finished markup means a stale or older process
+		yields a payslip missing this panel rather than a print error.
+		"""
+		rows = (res or {}).get("breakdown") or []
+		if not rows:
+			return ""
+
+		currency = self.currency or "GHS"
+
+		def money(value):
+			try:
+				return fmt_money(flt(value), currency=currency)
+			except Exception:
+				return "{:,.2f}".format(flt(value))
+
+		body = []
+		for band in rows:
+			body.append(
+				"<tr><td>{band} {chargeable}</td><td class='amt'>{chargeable}</td>"
+				"<td class='amt'>{rate}%</td><td class='amt'>{tax}</td></tr>".format(
+					band=escape_html(str(band.get("band") or "")),
+					chargeable=money(band.get("chargeable")),
+					rate=flt(band.get("rate")),
+					tax=money(band.get("tax")),
+				)
+			)
+
+		return (
+			"<table class='gh-tbl'><thead><tr><th>PAYE Band</th>"
+			"<th class='amt'>Chargeable ({cur})</th><th class='amt'>Rate</th>"
+			"<th class='amt'>Tax ({cur})</th></tr></thead><tbody>{body}</tbody>"
+			"<tfoot><tr class='tot'><td colspan='3'>Total PAYE</td>"
+			"<td class='amt'>{total}</td></tr></tfoot></table>"
+		).format(cur=currency, body="".join(body), total=money((res or {}).get("total_paye")))
+
 	def gh_breakdown_rows(self):
 		"""
 		Band breakdown for the print format.
@@ -259,6 +300,11 @@ class GhanaSalarySlip(SalarySlip):
 			self.gh_paye_breakdown = json.dumps(res["breakdown"])
 		except Exception:
 			self.gh_paye_breakdown = "[]"
+
+		try:
+			self.gh_paye_breakdown_html = self.gh_render_breakdown(res)
+		except Exception:
+			self.gh_paye_breakdown_html = ""
 
 	def validate(self):
 		super().validate()

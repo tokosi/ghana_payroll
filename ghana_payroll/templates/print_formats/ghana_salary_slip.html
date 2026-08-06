@@ -188,32 +188,8 @@
 		</tr>
 	</table>
 
-	{%- set breakdown = doc.gh_breakdown_rows() if doc.get("gh_paye_breakdown") else [] -%}
-	{%- if breakdown %}
-	<table class="gh-tbl">
-		<thead>
-			<tr>
-				<th>PAYE Band</th>
-				<th class="amt">Chargeable ({{ cur }})</th>
-				<th class="amt">Rate</th>
-				<th class="amt">Tax ({{ cur }})</th>
-			</tr>
-		</thead>
-		<tbody>
-			{%- for b in breakdown %}
-			<tr>
-				<td>{{ b.band }} {{ frappe.utils.fmt_money(b.chargeable, currency=cur) }}</td>
-				<td class="amt">{{ frappe.utils.fmt_money(b.chargeable, currency=cur) }}</td>
-				<td class="amt">{{ b.rate }}%</td>
-				<td class="amt">{{ frappe.utils.fmt_money(b.tax, currency=cur) }}</td>
-			</tr>
-			{%- endfor %}
-			<tr class="tot">
-				<td colspan="3">Total PAYE</td>
-				<td class="amt">{{ frappe.utils.fmt_money(doc.get("gh_total_paye") or 0, currency=cur) }}</td>
-			</tr>
-		</tbody>
-	</table>
+	{%- if doc.get("gh_paye_breakdown_html") %}
+	{{ doc.gh_paye_breakdown_html | safe }}
 	{%- endif %}
 
 	<table class="gh-sign">

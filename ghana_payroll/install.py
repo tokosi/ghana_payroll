@@ -161,6 +161,7 @@ def create_custom_fields_for_ghana():
 			{"fieldname": "gh_total_paye", "fieldtype": "Currency", "label": "Total PAYE", "insert_after": "gh_bonus_tax", "read_only": 1, "bold": 1},
 			{"fieldname": "gh_employer_cost", "fieldtype": "Currency", "label": "Total Employer Cost", "insert_after": "gh_total_paye", "read_only": 1},
 			{"fieldname": "gh_paye_breakdown", "fieldtype": "Long Text", "label": "PAYE Band Breakdown (JSON)", "insert_after": "gh_employer_cost", "read_only": 1, "hidden": 1, "print_hide": 1},
+			{"fieldname": "gh_paye_breakdown_html", "fieldtype": "Long Text", "label": "PAYE Band Breakdown (HTML)", "insert_after": "gh_paye_breakdown", "read_only": 1, "hidden": 1, "print_hide": 1},
 		],
 	}
 	create_custom_fields(fields, update=True)
