@@ -23,6 +23,31 @@ frappe.ui.form.on("Ghana Payroll Settings", {
 			);
 		});
 
+		frm.add_custom_button(__("Create Income Tax Slab"), () => {
+			frappe.prompt(
+				[{ fieldname: "company", label: __("Company"), fieldtype: "Link", options: "Company", reqd: 1 }],
+				(values) => {
+					frappe.call({
+						method: "ghana_payroll.install.create_income_tax_slab",
+						args: { company: values.company },
+						freeze: true,
+						callback: (r) => {
+							if (r.message) {
+								frappe.show_alert({
+									message: __("Created {0}. Link it on Salary Structure Assignment.", [r.message]),
+									indicator: "green",
+								});
+							} else {
+								frappe.msgprint(__("Could not create the slab. Check the Error Log."));
+							}
+						},
+					});
+				},
+				__("Placeholder Income Tax Slab"),
+				__("Create")
+			);
+		}, __("Setup"));
+
 		frm.dashboard.clear_headline();
 		if (!frm.doc.enabled) {
 			frm.dashboard.set_headline(

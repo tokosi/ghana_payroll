@@ -80,6 +80,7 @@ def setup():
 	create_custom_fields_for_ghana()
 	create_salary_components()
 	seed_settings()
+	create_income_tax_slabs()
 	create_print_format()
 	create_workspace()
 	frappe.db.commit()
@@ -213,6 +214,64 @@ def seed_settings():
 	settings.flags.ignore_permissions = True
 	settings.flags.ignore_mandatory = True
 	settings.save(ignore_permissions=True)
+
+
+# ----------------------------------------------------------------------
+# placeholder income tax slab
+# ----------------------------------------------------------------------
+SLAB_NAME = "Ghana PAYE - Managed by Ghana Payroll"
+
+
+@frappe.whitelist()
+def create_income_tax_slab(company=None):
+	"""
+	Create a submitted 0% Income Tax Slab.
+
+	HRMS blocks a Salary Structure Assignment when the structure carries a
+	component flagged `variable_based_on_taxable_salary` and no slab is linked.
+	The Ghana engine takes its bands from Ghana Payroll Settings and never reads
+	the slab, so an empty one satisfies the guard without changing any figure.
+	"""
+	if not company:
+		company = frappe.defaults.get_user_default("Company") or frappe.db.get_value("Company", {}, "name")
+	if not company:
+		return None
+
+	name = SLAB_NAME if not frappe.db.exists("Income Tax Slab", SLAB_NAME) else "{0} - {1}".format(SLAB_NAME, company)
+
+	existing = frappe.db.get_value(
+		"Income Tax Slab", {"company": company, "docstatus": 1, "name": ("like", SLAB_NAME + "%")}, "name"
+	)
+	if existing:
+		return existing
+
+	currency = frappe.db.get_value("Company", company, "default_currency") or "GHS"
+
+	try:
+		slab = frappe.new_doc("Income Tax Slab")
+		slab.name = name
+		slab.company = company
+		slab.currency = currency
+		slab.effective_from = "2020-01-01"
+		slab.allow_tax_exemption = 0
+		slab.append("slabs", {"from_amount": 0, "to_amount": 0, "percent_deduction": 0})
+		slab.flags.ignore_permissions = True
+		slab.insert(ignore_permissions=True)
+		slab.submit()
+		return slab.name
+	except Exception:
+		frappe.log_error(
+			title="Ghana Payroll: could not create placeholder Income Tax Slab",
+			message=frappe.get_traceback(),
+		)
+		return None
+
+
+def create_income_tax_slabs():
+	"""One placeholder slab per Ghanaian company."""
+	companies = frappe.get_all("Company", filters={"country": "Ghana"}, pluck="name")
+	for company in companies:
+		create_income_tax_slab(company)
 
 
 # ----------------------------------------------------------------------

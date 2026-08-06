@@ -7,7 +7,7 @@ app_publisher = "Ghana Payroll Contributors"
 app_description = "Ghana localisation for ERPNext payroll: monthly graduated PAYE, SSNIT and Provident Fund"
 app_email = "support@example.com"
 app_license = "mit"
-app_version = "1.0.0"
+app_version = "1.0.1"
 
 required_apps = ["frappe/erpnext", "frappe/hrms"]
 
@@ -16,6 +16,7 @@ required_apps = ["frappe/erpnext", "frappe/hrms"]
 # ---------------------------------------------------------------------------
 override_doctype_class = {
 	"Salary Slip": "ghana_payroll.overrides.salary_slip.GhanaSalarySlip",
+	"Salary Structure Assignment": "ghana_payroll.overrides.salary_structure_assignment.GhanaSalaryStructureAssignment",
 }
 
 # ---------------------------------------------------------------------------
